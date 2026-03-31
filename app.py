@@ -182,57 +182,57 @@ if uploaded_file is not None:
         st.markdown("---")
             
         # --- 4. EMOTION PREDICTION ---
-        st.header("🧠 Emotion Prediction")
+        # st.header("🧠 Emotion Prediction")
         
-        if st.button("Predict Emotion", type="primary"):
-            if not hf_api_key:
-                st.error("Please provide your Hugging Face API key on the left sidebar to proceed.")
-            else:
-                with st.spinner("Analyzing the speech emotion using Hugging Face model..."):
-                    target_sr = 16000
+        # if st.button("Predict Emotion", type="primary"):
+        #     if not hf_api_key:
+        #         st.error("Please provide your Hugging Face API key on the left sidebar to proceed.")
+        #     else:
+        #         with st.spinner("Analyzing the speech emotion using Hugging Face model..."):
+        #             target_sr = 16000
                     
-                    # FIX: Use librosa.to_mono() instead of y[0] for correct stereo → mono conversion
-                    y_mono = librosa.to_mono(y) if y.ndim > 1 else y
+        #             # FIX: Use librosa.to_mono() instead of y[0] for correct stereo → mono conversion
+        #             y_mono = librosa.to_mono(y) if y.ndim > 1 else y
                     
-                    y_api = librosa.resample(y_mono, orig_sr=sr, target_sr=target_sr) if sr != target_sr else y_mono
+        #             y_api = librosa.resample(y_mono, orig_sr=sr, target_sr=target_sr) if sr != target_sr else y_mono
                     
-                    max_len = target_sr * 10
-                    if len(y_api) > max_len:
-                        y_api = y_api[:max_len]
-                        st.info("ℹ️ Your audio was longer than 10 seconds. We truncated it for predicting to improve API reliability and speed.")
+        #             max_len = target_sr * 10
+        #             if len(y_api) > max_len:
+        #                 y_api = y_api[:max_len]
+        #                 st.info("ℹ️ Your audio was longer than 10 seconds. We truncated it for predicting to improve API reliability and speed.")
                         
-                    # Write to an in-memory byte buffer
-                    buffer = io.BytesIO()
-                    sf.write(buffer, y_api, target_sr, format='WAV', subtype='PCM_16')
-                    buffer.seek(0)
-                    api_audio_bytes = buffer.read()
+        #             # Write to an in-memory byte buffer
+        #             buffer = io.BytesIO()
+        #             sf.write(buffer, y_api, target_sr, format='WAV', subtype='PCM_16')
+        #             buffer.seek(0)
+        #             api_audio_bytes = buffer.read()
                     
-                    # API call from our model_api.py helper
-                    result = detect_emotion(api_audio_bytes, hf_api_key)
+        #             # API call from our model_api.py helper
+        #             result = detect_emotion(api_audio_bytes, hf_api_key)
                     
-                    if result.get("success"):
-                        # FIX: Updated emotion_map to match new model's labels
-                        emotion_map = {
-                            "angry":     ("Angry",     "😡"),
-                            "calm":      ("Calm",      "😌"),
-                            "disgust":   ("Disgust",   "🤢"),
-                            "fearful":   ("Fearful",   "😨"),
-                            "happy":     ("Happy",     "😄"),
-                            "neutral":   ("Neutral",   "😐"),
-                            "sad":       ("Sad",       "😢"),
-                            "surprised": ("Surprised", "😲"),
-                        }
+        #             if result.get("success"):
+        #                 # FIX: Updated emotion_map to match new model's labels
+        #                 emotion_map = {
+        #                     "angry":     ("Angry",     "😡"),
+        #                     "calm":      ("Calm",      "😌"),
+        #                     "disgust":   ("Disgust",   "🤢"),
+        #                     "fearful":   ("Fearful",   "😨"),
+        #                     "happy":     ("Happy",     "😄"),
+        #                     "neutral":   ("Neutral",   "😐"),
+        #                     "sad":       ("Sad",       "😢"),
+        #                     "surprised": ("Surprised", "😲"),
+        #                 }
                         
-                        raw_label = result['emotion'].lower()  # normalize to lowercase for safe matching
-                        formatted_label, emoji = emotion_map.get(raw_label, (raw_label.capitalize(), "🤔"))
-                        confidence = result['score'] * 100
+        #                 raw_label = result['emotion'].lower()  # normalize to lowercase for safe matching
+        #                 formatted_label, emoji = emotion_map.get(raw_label, (raw_label.capitalize(), "🤔"))
+        #                 confidence = result['score'] * 100
                         
-                        st.success("Prediction Complete!")
-                        st.subheader(f"Predicted Emotion: {emoji} **{formatted_label}**")
-                        st.progress(result['score'], text=f"Confidence: {confidence:.2f}%")
+        #                 st.success("Prediction Complete!")
+        #                 st.subheader(f"Predicted Emotion: {emoji} **{formatted_label}**")
+        #                 st.progress(result['score'], text=f"Confidence: {confidence:.2f}%")
                         
-                    else:
-                        st.error(f"Failed to predict emotion: {result.get('error')}")
+        #             else:
+        #                 st.error(f"Failed to predict emotion: {result.get('error')}")
 
     except Exception as e:
         st.error(f"Error processing the audio file: {e}")
