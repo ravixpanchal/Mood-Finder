@@ -114,7 +114,7 @@ st.markdown("""
 
 # --- API KEY SETUP ---
 # Look for API key in secrets first. If not found, ask the user in the UI.
-hf_api_key = "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"
+hf_api_key = ""
 try:
     if "HF_API_KEY" in st.secrets:
         hf_api_key = st.secrets["HF_API_KEY"]
