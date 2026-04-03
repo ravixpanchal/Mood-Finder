@@ -196,103 +196,107 @@ st.markdown("---")
 
 
 # ── Audio Loader ──────────────────────────────────────────────────────────────
-def _find_ffmpeg():
-    """Return path to ffmpeg/ffprobe if available, else None."""
-    import shutil, subprocess, sys
-    # 1. Check system PATH
+def _get_ffmpeg_path():
+    """Return path to a working ffmpeg binary (system PATH or imageio-ffmpeg bundle)."""
+    import shutil
     if shutil.which("ffmpeg"):
         return shutil.which("ffmpeg")
-    # 2. Check imageio-ffmpeg (bundled binary — no system install needed)
     try:
         import imageio_ffmpeg
         path = imageio_ffmpeg.get_ffmpeg_exe()
-        if path:
+        if path and os.path.isfile(path):
             return path
     except Exception:
         pass
     return None
 
 
-def _configure_pydub_ffmpeg():
-    """Point pydub to a working ffmpeg binary. Returns True if found."""
-    ffmpeg_path = _find_ffmpeg()
-    if ffmpeg_path:
-        from pydub import AudioSegment
-        AudioSegment.converter = ffmpeg_path
-        # Also set ffprobe to the same directory
-        import os
-        ffprobe = os.path.join(os.path.dirname(ffmpeg_path),
-                               "ffprobe" + (".exe" if os.name == "nt" else ""))
-        if os.path.exists(ffprobe):
-            AudioSegment.ffprobe = ffprobe
-        return True
-    return False
+def _decode_with_ffmpeg(file_bytes: bytes, ext: str, ffmpeg_path: str) -> bytes:
+    """
+    Use ffmpeg directly (subprocess) to convert any audio format → WAV bytes.
+    This completely bypasses pydub's ffprobe dependency.
+    """
+    import subprocess
+    cmd = [
+        ffmpeg_path,
+        "-y",                  # overwrite output
+        "-hide_banner",
+        "-loglevel", "error",
+        "-i", "pipe:0",        # read from stdin
+        "-f", "wav",           # output format
+        "-ar", "22050",        # resample to 22050 Hz (librosa default)
+        "-ac", "1",            # mono
+        "pipe:1",              # write to stdout
+    ]
+    result = subprocess.run(
+        cmd,
+        input=file_bytes,
+        capture_output=True,
+        timeout=120,
+    )
+    if result.returncode != 0:
+        raise RuntimeError(
+            f"ffmpeg conversion failed: {result.stderr.decode(errors='replace')}"
+        )
+    return result.stdout
 
 
 def load_audio_bytes(file_bytes: bytes, ext: str):
     """
     Load audio from raw bytes using a multi-strategy approach:
-      1. WAV / FLAC / OGG  → librosa / soundfile directly (no ffmpeg needed)
-      2. Everything else   → pydub with auto-discovered ffmpeg
-      3. Fallback          → write to temp file and let librosa try natively
+      1. WAV / FLAC / OGG / AIFF  → librosa/soundfile directly (no ffmpeg needed)
+      2. Everything else           → ffmpeg subprocess via stdin/stdout pipe
+                                     (no ffprobe, no pydub dependency issues)
+      3. Last resort               → temp file + librosa
     """
     ext = ext.lower()
 
-    # ── Strategy 1: formats librosa/soundfile handles natively ──────────────
+    # ── Strategy 1: native librosa/soundfile formats ─────────────────────────
     if ext in ("wav", "flac", "ogg", "aiff", "aif"):
         try:
             y, sr = librosa.load(io.BytesIO(file_bytes), sr=None, mono=True)
             return y, sr
         except Exception:
-            pass  # fall through to pydub
+            pass  # fall through
 
-    # ── Strategy 2: pydub + ffmpeg (auto-discovered) ─────────────────────────
-    try:
-        from pydub import AudioSegment
-        ffmpeg_ok = _configure_pydub_ffmpeg()
-
-        fmt_map = {"mp3": "mp3", "mp4": "mp4", "m4a": "mp4",
-                   "aac": "aac", "wma": "asf", "opus": "opus",
-                   "ogg": "ogg", "flac": "flac", "aiff": "aiff", "aif": "aiff"}
-        fmt = fmt_map.get(ext, ext)
-
-        audio_seg = AudioSegment.from_file(io.BytesIO(file_bytes), format=fmt)
-        wav_buf   = io.BytesIO()
-        audio_seg.export(wav_buf, format="wav")
-        wav_buf.seek(0)
-        y, sr = librosa.load(wav_buf, sr=None, mono=True)
-        return y, sr
-
-    except Exception as pydub_err:
-        # ── Strategy 3: write to a real temp file and try librosa directly ───
+    # ── Strategy 2: ffmpeg subprocess (pipe) — no ffprobe needed ─────────────
+    ffmpeg_path = _get_ffmpeg_path()
+    if ffmpeg_path:
         try:
-            suffix = f".{ext}"
-            with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-                tmp.write(file_bytes)
-                tmp_path = tmp.name
-            y, sr = librosa.load(tmp_path, sr=None, mono=True)
-            os.unlink(tmp_path)
+            wav_bytes = _decode_with_ffmpeg(file_bytes, ext, ffmpeg_path)
+            y, sr = librosa.load(io.BytesIO(wav_bytes), sr=None, mono=True)
             return y, sr
-        except Exception as fallback_err:
-            # All strategies failed — surface a helpful message
-            ffmpeg_path = _find_ffmpeg()
-            if not ffmpeg_path:
-                raise RuntimeError(
-                    f"Could not load '{ext.upper()}' file.\n\n"
-                    "**ffmpeg was not found.** Fix one of these ways:\n\n"
-                    "**Option A — Install imageio-ffmpeg (easiest, no PATH changes):**\n"
-                    "```\npip install imageio-ffmpeg\n```\n\n"
-                    "**Option B — Install ffmpeg system-wide:**\n"
-                    "- Windows: https://ffmpeg.org/download.html → add `bin/` to PATH\n"
-                    "- macOS: `brew install ffmpeg`\n"
-                    "- Linux: `sudo apt install ffmpeg`\n\n"
-                    f"Original error: {pydub_err}"
-                ) from fallback_err
-            raise RuntimeError(
-                f"Could not decode '{ext.upper()}' audio.\n"
-                f"pydub error: {pydub_err}\n"
-                f"Fallback error: {fallback_err}"
-            ) from fallback_err
+        except Exception as ffmpeg_err:
+            pass  # fall through to temp-file strategy
+
+    # ── Strategy 3: temp file + librosa ──────────────────────────────────────
+    try:
+        suffix = f".{ext}"
+        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
+            tmp.write(file_bytes)
+            tmp_path = tmp.name
+        try:
+            y, sr = librosa.load(tmp_path, sr=None, mono=True)
+            return y, sr
+        finally:
+            try:
+                os.unlink(tmp_path)
+            except Exception:
+                pass
+    except Exception as tmp_err:
+        pass
+
+    # ── All strategies failed — raise clear error ─────────────────────────────
+    if not ffmpeg_path:
+        raise RuntimeError(
+            f"Cannot load '{ext.upper()}' — ffmpeg not found.\n"
+            "Install it with:  pip install imageio-ffmpeg\n"
+            "Or system-wide:   https://ffmpeg.org/download.html"
+        )
+    raise RuntimeError(
+        f"Cannot decode '{ext.upper()}' audio even with ffmpeg. "
+        "Try converting the file to WAV first."
+    )
 
 
 # ── Export Helpers ─────────────────────────────────────────────────────────────
@@ -639,25 +643,9 @@ if uploaded_file is not None:
 
     except Exception as e:
         err_msg = str(e)
-        st.error(f"❌ Error processing audio: {err_msg}")
-
-        if any(x in err_msg for x in ["ffmpeg", "WinError 2", "cannot find", "No such file", "imageio"]):
-            st.markdown("""
-**🔧 Fix: ffmpeg is not found.** Choose the easiest option:
-
-**✅ Option A — Easiest (no PATH changes, works on Windows/Mac/Linux):**
-```
-pip install imageio-ffmpeg
-```
-Restart Streamlit after installing — the app will auto-detect the bundled ffmpeg.
-
-**Option B — Install ffmpeg system-wide:**
-- **Windows:** Download from https://ffmpeg.org/download.html → unzip → add `bin/` folder to System PATH
-- **macOS:** `brew install ffmpeg`
-- **Linux:** `sudo apt install ffmpeg`
-
-> WAV files work without ffmpeg. For MP3, MP4, OGG, AAC etc., ffmpeg is required.
-""")
+        st.error(f"❌ {err_msg}")
+        if "ffmpeg" in err_msg.lower() or "imageio" in err_msg.lower():
+            st.info("💡 Run: `pip install imageio-ffmpeg` then restart Streamlit. WAV files always work without ffmpeg.")
         else:
             st.info("💡 Try converting your file to WAV format and re-uploading.")
 
