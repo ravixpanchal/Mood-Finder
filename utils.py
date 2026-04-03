@@ -60,9 +60,9 @@ def extract_features(y, sr):
     # Spectral Rolloff (85% energy threshold)
     rolloff = float(np.mean(librosa.feature.spectral_rolloff(y=y, sr=sr, roll_percent=0.85)))
 
-    # Tempo
-    tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
-    tempo = float(tempo)
+    # Tempo — librosa >= 0.10 returns a 1-element array; flatten safely
+    tempo_raw, _ = librosa.beat.beat_track(y=y, sr=sr)
+    tempo = float(np.asarray(tempo_raw).flat[0])
 
     # MFCCs — mean of each of the 13 coefficients
     mfcc = np.mean(librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13), axis=1)
