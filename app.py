@@ -670,6 +670,6 @@ if uploaded_file is not None:
 # ── Footer ───────────────────────────────────────────────────────────────────
 st.markdown(f"""
 <div class="site-footer">
-    Made with ❤️ by Team. All Rights Reserved © 2026
+    Made with &#10084;&#65039; by Team. All Rights Reserved © 2026
 </div>
 """, unsafe_allow_html=True)
