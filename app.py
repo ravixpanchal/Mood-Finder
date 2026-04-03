@@ -3,7 +3,6 @@ import librosa
 import numpy as np
 import io
 import os
-import json
 import tempfile
 from datetime import datetime
 
@@ -60,7 +59,8 @@ else:
 st.set_page_config(
     page_title="Emotion Detection from Speech",
     page_icon="🎙️",
-    layout="wide"
+    layout="wide",
+    initial_sidebar_state="collapsed"
 )
 
 # ── Global CSS ───────────────────────────────────────────────────────────────
@@ -83,9 +83,20 @@ html, body, .stApp {{
 
 .block-container {{
     padding-top: 1.5rem !important;
-    padding-left: clamp(1rem, 4vw, 3rem) !important;
-    padding-right: clamp(1rem, 4vw, 3rem) !important;
-    max-width: 1200px;
+    padding-left: clamp(0.75rem, 3vw, 2.5rem) !important;
+    padding-right: clamp(0.75rem, 3vw, 2.5rem) !important;
+    max-width: 100% !important;
+    width: 100% !important;
+}}
+
+/* Force Streamlit root containers to fill viewport */
+.main > div, [data-testid="stAppViewContainer"], [data-testid="stMain"] {{
+    max-width: 100% !important;
+    width: 100% !important;
+    padding: 0 !important;
+}}
+section[data-testid="stSidebar"] + div {{
+    max-width: 100% !important;
 }}
 
 /* ── Hero ── */
@@ -176,11 +187,18 @@ h1, h2, h3, h4 {{ color: {TEXT_COLOR} !important; }}
 }}
 
 /* ── Responsive ── */
-@media (max-width: 768px) {{
-    .main-title {{ font-size: 2rem; }}
-    .subtitle   {{ font-size: 0.88rem; padding: 0 12px; }}
-    [data-testid="column"] {{ min-width: 100% !important; }}
+@media (max-width: 900px) {{
+    .main-title {{ font-size: 2.2rem; }}
+    .subtitle   {{ font-size: 0.92rem; padding: 0 12px; }}
+    .badges-row {{ gap: 8px; }}
+}}
+@media (max-width: 640px) {{
+    .main-title  {{ font-size: 1.7rem; }}
+    .subtitle    {{ font-size: 0.85rem; padding: 0 8px; }}
+    .feature-badge {{ font-size: 11px; padding: 5px 10px; }}
+    [data-testid="column"] {{ min-width: 100% !important; flex: 1 1 100% !important; }}
     .dl-row {{ flex-direction: column; }}
+    [data-testid="stMetric"] {{ padding: 10px 12px; }}
 }}
 
 /* ── Streamlit markdown text colour ── */
