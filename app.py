@@ -9,51 +9,22 @@ from datetime import datetime
 from utils import plot_waveform, plot_spectrogram, plot_mfcc, extract_features
 from emotion_engine import classify_emotion
 
-# ── Theme Init ─────────────────────────────────────────────────────────────
-if "dark_mode" not in st.session_state:
-    st.session_state.dark_mode = True
-
-dark = st.session_state.dark_mode
-
-# ── Theme Variables ─────────────────────────────────────────────────────────
-if dark:
-    BG          = "#0b0914"
-    GRID_COLOR  = "rgba(255,255,255,0.03)"
-    TEXT_COLOR  = "#ffffff"
-    SUBTLE      = "#94a3b8"
-    CARD_BG     = "rgba(255,255,255,0.04)"
-    CARD_BORDER = "rgba(255,255,255,0.08)"
-    BADGE_BG    = "rgba(255,255,255,0.03)"
-    BADGE_BOR   = "rgba(255,255,255,0.10)"
-    BADGE_TXT   = "#cbd5e1"
-    UPLOAD_BG   = "rgba(99,102,241,0.04)"
-    UPLOAD_BOR  = "rgba(99,102,241,0.25)"
-    TOGGLE_BG   = "rgba(255,255,255,0.06)"
-    TOGGLE_BOR  = "rgba(255,255,255,0.12)"
-    TOGGLE_TXT  = "#e2e8f0"
-    FOOTER_TXT  = "#64748b"
-    SUCCESS_BG  = "rgba(34,197,94,0.10)"
-    SUCCESS_BOR = "rgba(34,197,94,0.30)"
-    SUCCESS_TXT = "#4ade80"
-else:
-    BG          = "#f0f4f8"
-    GRID_COLOR  = "rgba(0,0,0,0.04)"
-    TEXT_COLOR  = "#0f172a"
-    SUBTLE      = "#475569"
-    CARD_BG     = "rgba(255,255,255,0.85)"
-    CARD_BORDER = "rgba(0,0,0,0.10)"
-    BADGE_BG    = "rgba(0,0,0,0.04)"
-    BADGE_BOR   = "rgba(0,0,0,0.10)"
-    BADGE_TXT   = "#334155"
-    UPLOAD_BG   = "rgba(99,102,241,0.06)"
-    UPLOAD_BOR  = "rgba(99,102,241,0.35)"
-    TOGGLE_BG   = "rgba(0,0,0,0.06)"
-    TOGGLE_BOR  = "rgba(0,0,0,0.12)"
-    TOGGLE_TXT  = "#1e293b"
-    FOOTER_TXT  = "#94a3b8"
-    SUCCESS_BG  = "rgba(34,197,94,0.08)"
-    SUCCESS_BOR = "rgba(34,197,94,0.25)"
-    SUCCESS_TXT = "#16a34a"
+# ── Theme (Dark — fixed) ────────────────────────────────────────────────────
+BG          = "#0b0914"
+GRID_COLOR  = "rgba(255,255,255,0.03)"
+TEXT_COLOR  = "#ffffff"
+SUBTLE      = "#94a3b8"
+CARD_BG     = "rgba(255,255,255,0.04)"
+CARD_BORDER = "rgba(255,255,255,0.08)"
+BADGE_BG    = "rgba(255,255,255,0.03)"
+BADGE_BOR   = "rgba(255,255,255,0.10)"
+BADGE_TXT   = "#cbd5e1"
+UPLOAD_BG   = "rgba(99,102,241,0.04)"
+UPLOAD_BOR  = "rgba(99,102,241,0.25)"
+FOOTER_TXT  = "#64748b"
+SUCCESS_BG  = "rgba(34,197,94,0.10)"
+SUCCESS_BOR = "rgba(34,197,94,0.30)"
+SUCCESS_TXT = "#4ade80"
 
 # ── Page Config ─────────────────────────────────────────────────────────────
 st.set_page_config(
@@ -128,15 +99,6 @@ section[data-testid="stSidebar"] + div {{
     display: flex; align-items: center; gap: 8px;
 }}
 
-/* ── Toggle button ── */
-.toggle-btn {{
-    display: inline-flex; align-items: center; gap: 8px;
-    padding: 8px 18px; border-radius: 50px;
-    background: {TOGGLE_BG}; border: 1px solid {TOGGLE_BOR};
-    color: {TOGGLE_TXT}; font-size: 13px; font-weight: 500;
-    cursor: pointer; transition: all 0.2s ease;
-    text-decoration: none;
-}}
 
 /* ── Metrics ── */
 [data-testid="stMetric"] {{
@@ -213,15 +175,6 @@ p, li, label, .stMarkdown {{ color: {TEXT_COLOR} !important; }}
 </style>
 """, unsafe_allow_html=True)
 
-
-# ── Theme Toggle ─────────────────────────────────────────────────────────────
-top_col1, top_col2 = st.columns([8, 1])
-with top_col2:
-    icon   = "☀️" if dark else "🌙"
-    label  = "Light" if dark else "Dark"
-    if st.button(f"{icon} {label}", key="theme_toggle", help="Toggle theme"):
-        st.session_state.dark_mode = not st.session_state.dark_mode
-        st.rerun()
 
 # ── Hero ─────────────────────────────────────────────────────────────────────
 st.markdown(f"""
