@@ -211,91 +211,99 @@ def _get_ffmpeg_path():
     return None
 
 
-def _decode_with_ffmpeg(file_bytes: bytes, ext: str, ffmpeg_path: str) -> bytes:
+def _ffmpeg_to_wav_tempfile(file_bytes: bytes, ext: str, ffmpeg_path: str) -> bytes:
     """
-    Use ffmpeg directly (subprocess) to convert any audio format → WAV bytes.
-    This completely bypasses pydub's ffprobe dependency.
+    Write input to a real temp file, run ffmpeg to convert → WAV, return WAV bytes.
+    Using real input files (not pipe:0) fixes M4A/AAC/WMA which need seekable input.
     """
     import subprocess
-    cmd = [
-        ffmpeg_path,
-        "-y",                  # overwrite output
-        "-hide_banner",
-        "-loglevel", "error",
-        "-i", "pipe:0",        # read from stdin
-        "-f", "wav",           # output format
-        "-ar", "22050",        # resample to 22050 Hz (librosa default)
-        "-ac", "1",            # mono
-        "pipe:1",              # write to stdout
-    ]
-    result = subprocess.run(
-        cmd,
-        input=file_bytes,
-        capture_output=True,
-        timeout=120,
-    )
-    if result.returncode != 0:
-        raise RuntimeError(
-            f"ffmpeg conversion failed: {result.stderr.decode(errors='replace')}"
-        )
-    return result.stdout
+    in_suffix  = f".{ext}"
+    out_suffix = ".wav"
+    in_tmp = out_tmp = None
+    try:
+        # Write input to temp file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=in_suffix) as f:
+            f.write(file_bytes)
+            in_tmp = f.name
+
+        # Output temp file
+        with tempfile.NamedTemporaryFile(delete=False, suffix=out_suffix) as f:
+            out_tmp = f.name
+
+        cmd = [
+            ffmpeg_path,
+            "-y",
+            "-hide_banner",
+            "-loglevel", "error",
+            "-i", in_tmp,      # real file — seekable, works for all formats
+            "-f", "wav",
+            "-ar", "22050",
+            "-ac", "1",
+            out_tmp,
+        ]
+        result = subprocess.run(cmd, capture_output=True, timeout=120)
+        if result.returncode != 0:
+            raise RuntimeError(
+                f"ffmpeg error: {result.stderr.decode(errors='replace').strip()}"
+            )
+
+        with open(out_tmp, "rb") as f:
+            wav_bytes = f.read()
+
+        if len(wav_bytes) < 100:
+            raise RuntimeError("ffmpeg produced an empty output file.")
+
+        return wav_bytes
+
+    finally:
+        for p in (in_tmp, out_tmp):
+            if p:
+                try:
+                    os.unlink(p)
+                except Exception:
+                    pass
 
 
 def load_audio_bytes(file_bytes: bytes, ext: str):
     """
-    Load audio from raw bytes using a multi-strategy approach:
-      1. WAV / FLAC / OGG / AIFF  → librosa/soundfile directly (no ffmpeg needed)
-      2. Everything else           → ffmpeg subprocess via stdin/stdout pipe
-                                     (no ffprobe, no pydub dependency issues)
-      3. Last resort               → temp file + librosa
+    Load audio from raw bytes. Strategy order:
+      1. WAV / FLAC / OGG / AIFF  → librosa directly (no ffmpeg)
+      2. Everything else           → ffmpeg via real temp files (seekable I/O)
+                                     fixes M4A / AAC / WMA / MP3 / MP4
+      3. Validation                → raise if audio is silent / empty
     """
+    import subprocess
     ext = ext.lower()
+
+    ffmpeg_path = _get_ffmpeg_path()
 
     # ── Strategy 1: native librosa/soundfile formats ─────────────────────────
     if ext in ("wav", "flac", "ogg", "aiff", "aif"):
         try:
             y, sr = librosa.load(io.BytesIO(file_bytes), sr=None, mono=True)
-            return y, sr
+            if len(y) > 0:
+                return y, sr
         except Exception:
-            pass  # fall through
+            pass  # fall through to ffmpeg
 
-    # ── Strategy 2: ffmpeg subprocess (pipe) — no ffprobe needed ─────────────
-    ffmpeg_path = _get_ffmpeg_path()
+    # ── Strategy 2: ffmpeg via temp files (seekable — works for M4A/AAC/etc) ──
     if ffmpeg_path:
         try:
-            wav_bytes = _decode_with_ffmpeg(file_bytes, ext, ffmpeg_path)
+            wav_bytes = _ffmpeg_to_wav_tempfile(file_bytes, ext, ffmpeg_path)
             y, sr = librosa.load(io.BytesIO(wav_bytes), sr=None, mono=True)
-            return y, sr
-        except Exception as ffmpeg_err:
-            pass  # fall through to temp-file strategy
+            if len(y) > 0:
+                return y, sr
+            raise RuntimeError(
+                "Audio decoded but contains 0 samples. "
+                "The file may be corrupted or too short."
+            )
+        except Exception as e:
+            raise RuntimeError(str(e)) from e
 
-    # ── Strategy 3: temp file + librosa ──────────────────────────────────────
-    try:
-        suffix = f".{ext}"
-        with tempfile.NamedTemporaryFile(delete=False, suffix=suffix) as tmp:
-            tmp.write(file_bytes)
-            tmp_path = tmp.name
-        try:
-            y, sr = librosa.load(tmp_path, sr=None, mono=True)
-            return y, sr
-        finally:
-            try:
-                os.unlink(tmp_path)
-            except Exception:
-                pass
-    except Exception as tmp_err:
-        pass
-
-    # ── All strategies failed — raise clear error ─────────────────────────────
-    if not ffmpeg_path:
-        raise RuntimeError(
-            f"Cannot load '{ext.upper()}' — ffmpeg not found.\n"
-            "Install it with:  pip install imageio-ffmpeg\n"
-            "Or system-wide:   https://ffmpeg.org/download.html"
-        )
+    # ── No ffmpeg found ───────────────────────────────────────────────────────
     raise RuntimeError(
-        f"Cannot decode '{ext.upper()}' audio even with ffmpeg. "
-        "Try converting the file to WAV first."
+        f"Cannot load '{ext.upper()}' — ffmpeg not found. "
+        "Run: pip install imageio-ffmpeg"
     )
 
 
@@ -534,9 +542,19 @@ if uploaded_file is not None:
         with st.spinner(f"Loading {ext.upper()} audio…"):
             y, sr = load_audio_bytes(file_bytes, ext)
 
+        # ── Validate we actually got audio ───────────────────────────────────
+        duration = len(y) / sr if sr > 0 else 0
+        if len(y) == 0 or duration < 0.1:
+            st.error(
+                f"❌ The file loaded but contains no usable audio "
+                f"(duration: {duration:.2f}s). "
+                "Please check the file is not corrupted and try again."
+            )
+            st.stop()
+
         st.success(
             f"✅ Audio loaded!  |  **Format:** {ext.upper()}  |  "
-            f"**Sample Rate:** {sr} Hz  |  **Duration:** {len(y)/sr:.1f}s",
+            f"**Sample Rate:** {sr} Hz  |  **Duration:** {duration:.1f}s",
             icon="🎵"
         )
 
