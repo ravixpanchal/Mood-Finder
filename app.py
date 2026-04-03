@@ -612,6 +612,201 @@ if uploaded_file is not None:
             with col:
                 st.metric(f"{emoji_map.get(emo, '🤔')} {emo}", f"{score:.1f}%")
 
+        # ── How Emotion Is Detected ───────────────────────────────────────
+        st.markdown("---")
+        st.header("🔬 How Was This Emotion Detected?")
+        st.markdown(
+            "Every emotion leaves a unique **acoustic fingerprint** in your voice. "
+            "Here's exactly which features were measured from your audio, what they mean, "
+            "and how they influenced the final prediction."
+        )
+
+        # ── Feature explanation cards ─────────────────────────────────────
+        from emotion_engine import (
+            _ZCR_LOW, _ZCR_HIGH, _RMS_LOW, _RMS_HIGH,
+            _CEN_LOW, _CEN_HIGH, _ROL_LOW, _ROL_HIGH,
+            _TEMPO_LOW, _TEMPO_HIGH
+        )
+
+        def _bar(value, low, high, unit=""):
+            """Return a coloured level label based on thresholds."""
+            if value >= high:
+                level, color, arrow = "High", "#f87171", "▲"
+            elif value <= low:
+                level, color, arrow = "Low", "#60a5fa", "▼"
+            else:
+                level, color, arrow = "Mid", "#facc15", "●"
+            return level, color, arrow
+
+        feature_meta = [
+            {
+                "icon": "〰️",
+                "name": "Zero Crossing Rate (ZCR)",
+                "value": features["zcr"],
+                "unit": "",
+                "fmt": ".4f",
+                "low": _ZCR_LOW,
+                "high": _ZCR_HIGH,
+                "what": "How many times per second the audio wave crosses the zero line. Rapid, jagged speech has a high ZCR.",
+                "high_means": "Agitated, rapid speech → leans toward **Angry** or **Fearful**",
+                "low_means":  "Slow, smooth speech → leans toward **Calm** or **Sad**",
+            },
+            {
+                "icon": "🔊",
+                "name": "RMS Energy (Loudness)",
+                "value": features["rms"],
+                "unit": "",
+                "fmt": ".4f",
+                "low": _RMS_LOW,
+                "high": _RMS_HIGH,
+                "what": "Root Mean Square of the waveform amplitude — a direct measure of loudness and vocal effort.",
+                "high_means": "Loud, energetic voice → leans toward **Angry** or **Happy**",
+                "low_means":  "Quiet, subdued voice → leans toward **Sad** or **Calm**",
+            },
+            {
+                "icon": "✨",
+                "name": "Spectral Centroid (Brightness)",
+                "value": features["centroid"],
+                "unit": " Hz",
+                "fmt": ".0f",
+                "low": _CEN_LOW,
+                "high": _CEN_HIGH,
+                "what": "The 'centre of mass' of the frequency spectrum. A bright, high-pitched voice has a high centroid.",
+                "high_means": "Bright, high-pitched voice → leans toward **Happy** or **Fearful**",
+                "low_means":  "Dull, low-pitched voice → leans toward **Sad** or **Neutral**",
+            },
+            {
+                "icon": "📉",
+                "name": "Spectral Rolloff",
+                "value": features["rolloff"],
+                "unit": " Hz",
+                "fmt": ".0f",
+                "low": _ROL_LOW,
+                "high": _ROL_HIGH,
+                "what": "The frequency below which 85% of the signal energy is contained. High rolloff = lots of high-frequency content.",
+                "high_means": "Sharp, piercing voice → leans toward **Angry** or **Fearful**",
+                "low_means":  "Muffled, low voice → leans toward **Calm** or **Sad**",
+            },
+            {
+                "icon": "🎵",
+                "name": "Tempo (Speech Rate)",
+                "value": features["tempo"],
+                "unit": " BPM",
+                "fmt": ".1f",
+                "low": _TEMPO_LOW,
+                "high": _TEMPO_HIGH,
+                "what": "Estimated speech rhythm in beats per minute. Fast talkers convey urgency or excitement; slow talkers convey sadness or calm.",
+                "high_means": "Fast speech → leans toward **Happy** or **Angry**",
+                "low_means":  "Slow speech → leans toward **Sad**, **Calm**, or **Neutral**",
+            },
+        ]
+
+        for feat in feature_meta:
+            val    = feat["value"]
+            fmt    = feat["fmt"]
+            level, color, arrow = _bar(val, feat["low"], feat["high"])
+            pct    = min(100, max(0, (val - feat["low"]) / max(feat["high"] - feat["low"], 1e-9) * 100))
+            # Pre-format strings to avoid nested f-string format specs
+            val_str  = format(val,        fmt)
+            low_str  = format(feat["low"],  fmt)
+            high_str = format(feat["high"], fmt)
+
+            st.markdown(f"""
+<div style="background:rgba(255,255,255,0.03);border:1px solid rgba(255,255,255,0.08);
+            border-radius:14px;padding:18px 22px;margin-bottom:14px;">
+  <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;">
+    <div>
+      <span style="font-size:20px;">{feat["icon"]}</span>
+      <span style="font-size:15px;font-weight:700;color:#e2e8f0;margin-left:8px;">{feat["name"]}</span>
+    </div>
+    <div style="text-align:right;">
+      <span style="font-size:22px;font-weight:800;color:{color};">
+        {val_str}{feat["unit"]}
+      </span>
+      <span style="font-size:13px;color:{color};margin-left:8px;font-weight:600;">
+        {arrow} {level}
+      </span>
+    </div>
+  </div>
+
+  <!-- Progress bar -->
+  <div style="margin:10px 0 6px;background:rgba(255,255,255,0.06);border-radius:99px;height:7px;">
+    <div style="width:{pct:.1f}%;background:{color};height:7px;border-radius:99px;
+                transition:width 0.4s ease;"></div>
+  </div>
+  <div style="display:flex;justify-content:space-between;font-size:10px;color:#64748b;margin-bottom:10px;">
+    <span>Low (&lt; {low_str})</span>
+    <span>High (&gt; {high_str})</span>
+  </div>
+
+  <p style="color:#94a3b8;font-size:13px;margin:0 0 8px;">
+    <b style="color:#cbd5e1;">What it measures:</b> {feat["what"]}
+  </p>
+  <div style="display:flex;gap:10px;flex-wrap:wrap;">
+    <div style="flex:1;min-width:180px;background:rgba(248,113,113,0.07);border:1px solid rgba(248,113,113,0.2);
+                border-radius:8px;padding:8px 12px;font-size:12px;color:#fca5a5;">
+      ▲ High → {feat["high_means"]}
+    </div>
+    <div style="flex:1;min-width:180px;background:rgba(96,165,250,0.07);border:1px solid rgba(96,165,250,0.2);
+                border-radius:8px;padding:8px 12px;font-size:12px;color:#93c5fd;">
+      ▼ Low → {feat["low_means"]}
+    </div>
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+        # ── Score Breakdown: how each feature voted ───────────────────────
+        st.markdown("#### 🗳️ How Each Feature Voted for Your Result")
+        st.markdown(
+            f"The classifier computed a **weighted score** for all 6 emotions using the 5 features above. "
+            f"Scores were then converted to percentages via softmax. Here's the final tally:"
+        )
+
+        # Build a visual score table
+        sorted_scores = sorted(scores.items(), key=lambda x: -x[1])
+        max_score = sorted_scores[0][1]
+
+        for emo, sc in sorted_scores:
+            emo_emoji = emoji_map.get(emo, "🤔")
+            bar_pct   = sc / max_score * 100
+            bar_color = "#6366f1" if emo == emotion else "rgba(255,255,255,0.12)"
+            txt_color = "#a5b4fc" if emo == emotion else "#64748b"
+            bold_open  = "<b>" if emo == emotion else ""
+            bold_close = "</b>" if emo == emotion else ""
+            crown      = " 👑" if emo == emotion else ""
+
+            st.markdown(f"""
+<div style="display:flex;align-items:center;gap:12px;margin-bottom:8px;">
+  <div style="width:110px;font-size:13px;color:{txt_color};text-align:right;flex-shrink:0;">
+    {bold_open}{emo_emoji} {emo}{crown}{bold_close}
+  </div>
+  <div style="flex:1;background:rgba(255,255,255,0.05);border-radius:99px;height:10px;overflow:hidden;">
+    <div style="width:{bar_pct:.1f}%;background:{bar_color};height:10px;border-radius:99px;"></div>
+  </div>
+  <div style="width:52px;font-size:13px;color:{txt_color};text-align:left;flex-shrink:0;">
+    {bold_open}{sc:.1f}%{bold_close}
+  </div>
+</div>
+""", unsafe_allow_html=True)
+
+        # ── Formula explanation ───────────────────────────────────────────
+        st.markdown("#### 🧮 The Detection Formula")
+        st.markdown("""
+Each emotion is scored using a **weighted linear combination** of the acoustic features,
+then normalized with **softmax** so all scores sum to 100%:
+
+| Emotion | Key Drivers |
+|---------|------------|
+| 😡 Angry   | High ZCR + High Energy + High Rolloff + Fast Tempo |
+| 😄 Happy   | High Centroid + High Energy + Fast Tempo + High ZCR |
+| 😢 Sad     | Low ZCR + Low Energy + Low Centroid + Slow Tempo |
+| 😨 Fearful | High ZCR + High Centroid + High Rolloff + Fast Tempo |
+| 😌 Calm    | Low ZCR + Low Energy + Slow Tempo + Low Rolloff |
+| 😐 Neutral | Moderate values across all features |
+
+The final emotion is whichever category scores highest after softmax normalization.
+""")
+
         # ── Download Section ──────────────────────────────────────────────
         st.markdown("---")
         st.header("📥 Download Report")
@@ -670,6 +865,6 @@ if uploaded_file is not None:
 # ── Footer ───────────────────────────────────────────────────────────────────
 st.markdown(f"""
 <div class="site-footer">
-    Made with &#10084;&#65039; by Team. All Rights Reserved © 2026
+    Made with ❤️ by Team. All Rights Reserved © 2026
 </div>
 """, unsafe_allow_html=True)
