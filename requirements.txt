@@ -1,6 +1,10 @@
 streamlit
 librosa
 matplotlib
-requests
 numpy
 soundfile
+pydub
+imageio-ffmpeg
+reportlab
+openpyxl
+python-docx
