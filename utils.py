@@ -3,53 +3,75 @@ import librosa.display
 import matplotlib.pyplot as plt
 import numpy as np
 
+
 def plot_waveform(y, sr):
-    """
-    Creates and returns a matplotlib figure showing the audio waveform.
-    """
+    """Waveform: amplitude vs time."""
     fig, ax = plt.subplots(figsize=(10, 3))
-    # Simple, clear waveform using librosa display tool
     librosa.display.waveshow(y, sr=sr, ax=ax, alpha=0.6, color="royalblue")
-    ax.set(title="Audio Waveform")
+    ax.set(title="Audio Waveform", xlabel="Time (s)", ylabel="Amplitude")
     plt.tight_layout()
     return fig
 
+
 def plot_spectrogram(y, sr):
-    """
-    Creates and returns a matplotlib figure showing the audio spectrogram.
-    """
-    # Convert waveform signal to a Short-Time Fourier Transform (STFT)
+    """Short-Time Fourier Transform spectrogram in dB."""
     D = librosa.stft(y)
-    # Convert amplitude to decibels for visualization 
     S_db = librosa.amplitude_to_db(np.abs(D), ref=np.max)
-    
     fig, ax = plt.subplots(figsize=(10, 4))
-    img = librosa.display.specshow(S_db, x_axis='time', y_axis='hz', sr=sr, ax=ax, cmap="magma")
+    img = librosa.display.specshow(S_db, x_axis="time", y_axis="hz", sr=sr, ax=ax, cmap="magma")
     fig.colorbar(img, ax=ax, format="%+2.0f dB")
     ax.set(title="Spectrogram")
     plt.tight_layout()
     return fig
 
+
 def plot_mfcc(y, sr):
-    """
-    Creates and returns a matplotlib figure showing the Mel-Frequency Cepstral Coefficients (MFCCs).
-    """
-    # Extract MFCCs from the audio signal
+    """13 Mel-Frequency Cepstral Coefficients over time."""
     mfccs = librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13)
-    
     fig, ax = plt.subplots(figsize=(10, 4))
-    img = librosa.display.specshow(mfccs, x_axis='time', ax=ax, cmap="viridis")
+    img = librosa.display.specshow(mfccs, x_axis="time", ax=ax, cmap="viridis")
     fig.colorbar(img, ax=ax)
-    ax.set(title="Mel-Frequency Cepstral Coefficients (MFCC)")
+    ax.set(title="MFCC (Mel-Frequency Cepstral Coefficients)")
     plt.tight_layout()
     return fig
 
-def extract_zcr(y):
+
+def extract_features(y, sr):
     """
-    Extracts the Zero Crossing Rate (ZCR) features and returns its mean value.
+    Extract all acoustic features needed for emotion classification.
+
+    Returns a dict with:
+        zcr       – Zero Crossing Rate (mean)
+        rms       – Root Mean Square energy (mean)
+        centroid  – Spectral Centroid in Hz (mean)
+        rolloff   – Spectral Rolloff in Hz (mean)
+        tempo     – Estimated tempo in BPM
+        mfcc      – np.ndarray of shape (13,) — mean of each MFCC coefficient
     """
-    # Calculate the zero-crossing rate of the audio time series
-    zcr = librosa.feature.zero_crossing_rate(y)
-    
-    # Return the mean ZCR across all frames for simplicity
-    return np.mean(zcr)
+    # Zero Crossing Rate
+    zcr = float(np.mean(librosa.feature.zero_crossing_rate(y)))
+
+    # RMS Energy
+    rms = float(np.mean(librosa.feature.rms(y=y)))
+
+    # Spectral Centroid
+    centroid = float(np.mean(librosa.feature.spectral_centroid(y=y, sr=sr)))
+
+    # Spectral Rolloff (85% energy threshold)
+    rolloff = float(np.mean(librosa.feature.spectral_rolloff(y=y, sr=sr, roll_percent=0.85)))
+
+    # Tempo
+    tempo, _ = librosa.beat.beat_track(y=y, sr=sr)
+    tempo = float(tempo)
+
+    # MFCCs — mean of each of the 13 coefficients
+    mfcc = np.mean(librosa.feature.mfcc(y=y, sr=sr, n_mfcc=13), axis=1)
+
+    return {
+        "zcr":      zcr,
+        "rms":      rms,
+        "centroid": centroid,
+        "rolloff":  rolloff,
+        "tempo":    tempo,
+        "mfcc":     mfcc,
+    }
